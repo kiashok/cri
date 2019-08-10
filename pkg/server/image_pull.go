@@ -90,19 +90,28 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 	if ref != imageRef {
 		log.G(ctx).Debugf("PullImage using normalized image ref: %q", ref)
 	}
-	resolver, desc, err := c.getResolver(ctx, ref, c.credentials(r.GetAuth()))
+	resolver, _, err := c.getResolver(ctx, ref, c.credentials(r.GetAuth()))
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to resolve image %q", ref)
 	}
-	// We have to check schema1 here, because after `Pull`, schema1
-	// image has already been converted.
-	isSchema1 := desc.MediaType == containerdimages.MediaTypeDockerSchema1Manifest
 
+	var (
+		isSchema1    bool
+		imageHandler containerdimages.HandlerFunc = func(_ context.Context,
+			desc imagespec.Descriptor) ([]imagespec.Descriptor, error) {
+			if desc.MediaType == containerdimages.MediaTypeDockerSchema1Manifest {
+				isSchema1 = true
+			}
+			return nil, nil
+		}
+	)
 	image, err := c.client.Pull(ctx, ref,
 		containerd.WithSchema1Conversion,
 		containerd.WithResolver(resolver),
 		containerd.WithPullSnapshotter(c.getDefaultSnapshotterForSandbox(r.GetSandboxConfig())),
 		containerd.WithPullUnpack,
+		containerd.WithPullLabel(imageLabelKey, imageLabelValue),
+		containerd.WithImageHandler(imageHandler),
 	)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to pull and unpack image %q", ref)
