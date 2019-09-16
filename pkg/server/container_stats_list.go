@@ -20,6 +20,7 @@ import (
 	tasks "github.com/containerd/containerd/api/services/tasks/v1"
 	"github.com/containerd/containerd/api/types"
 	containerstore "github.com/containerd/cri/pkg/store/container"
+	sandboxstore "github.com/containerd/cri/pkg/store/sandbox"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 	runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
@@ -30,7 +31,7 @@ func (c *criService) ListContainerStats(
 	ctx context.Context,
 	in *runtime.ListContainerStatsRequest,
 ) (*runtime.ListContainerStatsResponse, error) {
-	request, containers, err := c.buildTaskMetricsRequest(in)
+	request, containers, sandboxes, err := c.buildTaskMetricsRequest(in)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to build metrics request")
 	}
@@ -38,7 +39,7 @@ func (c *criService) ListContainerStats(
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to fetch metrics for tasks")
 	}
-	criStats, err := c.toCRIContainerStats(resp.Metrics, containers)
+	criStats, err := c.toCRIContainerStats(resp.Metrics, containers, sandboxes)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to convert to cri containerd stats format")
 	}
@@ -48,6 +49,7 @@ func (c *criService) ListContainerStats(
 func (c *criService) toCRIContainerStats(
 	stats []*types.Metric,
 	containers []containerstore.Container,
+	sandboxes []sandboxstore.Sandbox,
 ) (*runtime.ListContainerStatsResponse, error) {
 	statsMap := make(map[string]*types.Metric)
 	for _, stat := range stats {
@@ -58,6 +60,13 @@ func (c *criService) toCRIContainerStats(
 		cs, err := c.getContainerMetrics(cntr.Metadata, statsMap[cntr.ID])
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to decode container metrics for %q", cntr.ID)
+		}
+		containerStats.Stats = append(containerStats.Stats, cs)
+	}
+	for _, sandbox := range sandboxes {
+		cs, err := c.getSandboxMetrics(sandbox.Metadata, statsMap[sandbox.ID])
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to decode sandbox metrics for %q", sandbox.ID)
 		}
 		containerStats.Stats = append(containerStats.Stats, cs)
 	}
@@ -77,13 +86,14 @@ func (c *criService) normalizeContainerStatsFilter(filter *runtime.ContainerStat
 // the information in the stats request and the containerStore
 func (c *criService) buildTaskMetricsRequest(
 	r *runtime.ListContainerStatsRequest,
-) (tasks.MetricsRequest, []containerstore.Container, error) {
+) (tasks.MetricsRequest, []containerstore.Container, []sandboxstore.Sandbox, error) {
 	var req tasks.MetricsRequest
 	if r.GetFilter() == nil {
-		return req, nil, nil
+		return req, nil, nil, nil
 	}
 	c.normalizeContainerStatsFilter(r.GetFilter())
 	var containers []containerstore.Container
+	var sandboxes []sandboxstore.Sandbox
 	for _, cntr := range c.containerStore.List() {
 		if r.GetFilter().GetId() != "" && cntr.ID != r.GetFilter().GetId() {
 			continue
@@ -98,7 +108,18 @@ func (c *criService) buildTaskMetricsRequest(
 		containers = append(containers, cntr)
 		req.Filters = append(req.Filters, "id=="+cntr.ID)
 	}
-	return req, containers, nil
+	for _, sandbox := range c.sandboxStore.List() {
+		if r.GetFilter().GetId() != "" && sandbox.ID != r.GetFilter().GetId() {
+			continue
+		}
+		if r.GetFilter().GetLabelSelector() != nil &&
+			!matchLabelSelector(r.GetFilter().GetLabelSelector(), sandbox.Config.GetLabels()) {
+			continue
+		}
+		sandboxes = append(sandboxes, sandbox)
+		req.Filters = append(req.Filters, "id=="+sandbox.ID)
+	}
+	return req, containers, sandboxes, nil
 }
 
 func matchLabelSelector(selector, labels map[string]string) bool {

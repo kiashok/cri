@@ -21,6 +21,8 @@ package server
 import (
 	"github.com/containerd/containerd/api/types"
 	containerstore "github.com/containerd/cri/pkg/store/container"
+	sandboxstore "github.com/containerd/cri/pkg/store/sandbox"
+	"github.com/containerd/typeurl"
 	runtime "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
 )
 
@@ -55,4 +57,31 @@ func (c *criService) getContainerMetrics(
 	// TODO: JTERRY75 process stats for Windows
 
 	return &cs, nil
+}
+
+func (c *criService) getSandboxMetrics(
+	meta sandboxstore.Metadata,
+	stats *types.Metric,
+) (*runtime.ContainerStats, error) {
+	configMeta := meta.Config.GetMetadata()
+	cs := &runtime.ContainerStats{
+		Attributes: &runtime.ContainerAttributes{
+			Id: meta.ID,
+			Metadata: &runtime.ContainerMetadata{
+				Name:    configMeta.Name,
+				Attempt: configMeta.Attempt,
+			},
+			Labels:      meta.Config.GetLabels(),
+			Annotations: meta.Config.GetAnnotations(),
+		},
+	}
+	v, err := typeurl.UnmarshalAny(stats.Data)
+	if err != nil {
+		return nil, err
+	}
+	if s, ok := v.(*runtime.ContainerStats); ok {
+		cs.Cpu = s.Cpu
+		cs.Memory = s.Memory
+	}
+	return cs, nil
 }
