@@ -105,14 +105,22 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 			return nil, nil
 		}
 	)
-	image, err := c.client.Pull(ctx, ref,
+
+	pullOpts := []containerd.RemoteOpt{
 		containerd.WithSchema1Conversion,
 		containerd.WithResolver(resolver),
-		containerd.WithPullSnapshotter(c.getDefaultSnapshotterForSandbox(r.GetSandboxConfig())),
+		containerd.WithPullSnapshotter(c.config.ContainerdConfig.Snapshotter),
 		containerd.WithPullUnpack,
 		containerd.WithPullLabel(imageLabelKey, imageLabelValue),
 		containerd.WithImageHandler(imageHandler),
-	)
+	}
+
+	if !c.config.ContainerdConfig.DisableSnapshotAnnotations {
+		pullOpts = append(pullOpts,
+			containerd.WithImageHandlerWrapper(appendInfoHandlerWrapper(ref)))
+	}
+
+	image, err := c.client.Pull(ctx, ref, pullOpts...)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to pull and unpack image %q", ref)
 	}
@@ -334,4 +342,43 @@ func requestFields(req *http.Request) logrus.Fields {
 	}
 
 	return logrus.Fields(fields)
+}
+
+const (
+	// targetRefLabel is a label which contains image reference and will be passed
+	// to snapshotters.
+	targetRefLabel = "containerd.io/snapshot/cri.image-ref"
+	// targetDigestLabel is a label which contains layer digest and will be passed
+	// to snapshotters.
+	targetDigestLabel = "containerd.io/snapshot/cri.layer-digest"
+)
+
+// appendInfoHandlerWrapper makes a handler which appends some basic information
+// of images to each layer descriptor as annotations during unpack. These
+// annotations will be passed to snapshotters as labels. These labels will be
+// used mainly by stargz-based snapshotters for querying image contents from the
+// registry.
+func appendInfoHandlerWrapper(ref string) func(f containerdimages.Handler) containerdimages.Handler {
+	return func(f containerdimages.Handler) containerdimages.Handler {
+		return containerdimages.HandlerFunc(func(ctx context.Context, desc imagespec.Descriptor) ([]imagespec.Descriptor, error) {
+			children, err := f.Handle(ctx, desc)
+			if err != nil {
+				return nil, err
+			}
+			switch desc.MediaType {
+			case imagespec.MediaTypeImageManifest, containerdimages.MediaTypeDockerSchema2Manifest:
+				for i := range children {
+					c := &children[i]
+					if containerdimages.IsLayerType(c.MediaType) {
+						if c.Annotations == nil {
+							c.Annotations = make(map[string]string)
+						}
+						c.Annotations[targetRefLabel] = ref
+						c.Annotations[targetDigestLabel] = c.Digest.String()
+					}
+				}
+			}
+			return children, nil
+		})
+	}
 }
