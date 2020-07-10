@@ -33,22 +33,30 @@ func getSingleContainerMetrics(
 	timestamp int64,
 ) {
 	if s := stats.GetWindows(); s != nil {
-		cs.Cpu = &runtime.CpuUsage{
-			Timestamp:            timestamp,
-			UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.Processor.TotalRuntimeNS},
+		if s.Processor != nil {
+			cs.Cpu = &runtime.CpuUsage{
+				Timestamp:            timestamp,
+				UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.Processor.TotalRuntimeNS},
+			}
 		}
-		cs.Memory = &runtime.MemoryUsage{
-			Timestamp:       timestamp,
-			WorkingSetBytes: &runtime.UInt64Value{Value: s.Memory.MemoryUsagePrivateWorkingSetBytes},
+		if s.Memory != nil {
+			cs.Memory = &runtime.MemoryUsage{
+				Timestamp:       timestamp,
+				WorkingSetBytes: &runtime.UInt64Value{Value: s.Memory.MemoryUsagePrivateWorkingSetBytes},
+			}
 		}
 	} else if s := stats.GetLinux(); s != nil {
-		cs.Cpu = &runtime.CpuUsage{
-			Timestamp:            timestamp,
-			UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.CPU.Usage.Total},
+		if s.CPU != nil && s.CPU.Usage != nil {
+			cs.Cpu = &runtime.CpuUsage{
+				Timestamp:            timestamp,
+				UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.CPU.Usage.Total},
+			}
 		}
-		cs.Memory = &runtime.MemoryUsage{
-			Timestamp:       timestamp,
-			WorkingSetBytes: &runtime.UInt64Value{Value: getWorkingSet(s.Memory)},
+		if s.Memory != nil {
+			cs.Memory = &runtime.MemoryUsage{
+				Timestamp:       timestamp,
+				WorkingSetBytes: &runtime.UInt64Value{Value: getWorkingSet(s.Memory)},
+			}
 		}
 	}
 }
@@ -57,7 +65,7 @@ func (c *criService) getContainerMetrics(
 	meta containerstore.Metadata,
 	stats *types.Metric,
 ) (*runtime.ContainerStats, error) {
-	var cs *runtime.ContainerStats
+	var cs runtime.ContainerStats
 	var usedBytes, inodesUsed uint64
 	sn, err := c.snapshotStore.Get(meta.ID)
 	// If snapshotstore doesn't have cached snapshot information
@@ -88,10 +96,10 @@ func (c *criService) getContainerMetrics(
 		}
 		if containerStats, ok := v.(*runhcsstats.Statistics); ok {
 			timestamp := stats.Timestamp.UnixNano()
-			getSingleContainerMetrics(containerStats, cs, timestamp)
+			getSingleContainerMetrics(containerStats, &cs, timestamp)
 		}
 	}
-	return cs, nil
+	return &cs, nil
 }
 
 func (c *criService) getSandboxMetrics(
@@ -121,13 +129,17 @@ func (c *criService) getSandboxMetrics(
 			// for hypervisor isolated pod stats as we return the UVMs working set and
 			// other metrics instead of the actual sandbox containers.
 			if s.VM != nil {
-				cs.Cpu = &runtime.CpuUsage{
-					Timestamp:            timestamp,
-					UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.VM.Processor.TotalRuntimeNS},
+				if s.VM.Processor != nil {
+					cs.Cpu = &runtime.CpuUsage{
+						Timestamp:            timestamp,
+						UsageCoreNanoSeconds: &runtime.UInt64Value{Value: s.VM.Processor.TotalRuntimeNS},
+					}
 				}
-				cs.Memory = &runtime.MemoryUsage{
-					Timestamp:       timestamp,
-					WorkingSetBytes: &runtime.UInt64Value{Value: s.VM.Memory.WorkingSetBytes},
+				if s.VM.Memory != nil {
+					cs.Memory = &runtime.MemoryUsage{
+						Timestamp:       timestamp,
+						WorkingSetBytes: &runtime.UInt64Value{Value: s.VM.Memory.WorkingSetBytes},
+					}
 				}
 			} else {
 				getSingleContainerMetrics(s, cs, timestamp)
