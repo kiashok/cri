@@ -463,7 +463,18 @@ func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxP
 			if err := setOCIPrivileged(&g, config); err != nil {
 				return nil, err
 			}
+		} else { // not privileged
+			if err := setOCICapabilities(&g, securityContext.GetCapabilities()); err != nil {
+				return nil, errors.Wrapf(err, "failed to set capabilities %+v",
+					securityContext.GetCapabilities())
+			}
 		}
+		// Clear all ambient capabilities. The implication of non-root + caps
+		// is not clearly defined in Kubernetes.
+		// See https://github.com/kubernetes/kubernetes/issues/56374
+		// Keep docker's behavior for now.
+		g.Config.Process.Capabilities.Ambient = []string{}
+
 		userstr, err := generateUserString(
 			securityContext.GetRunAsUsername(),
 			securityContext.GetRunAsUser(),
