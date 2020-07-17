@@ -157,6 +157,8 @@ type PluginConfig struct {
 	//
 	// NOTE: JTERRY75 - This is a hack! DO not submit as the final solution.
 	AutoManageVHDTemplatePath string `toml:"auto_manage_vhd_template_path" json:"autoManageVHDTemplatePath"`
+	// Sets GODEBUG=http2client=0 if enabled.
+	DisableHTTP2Client bool `toml:"disable_http2_client" json:"disableHTTP2Client"`
 }
 
 // X509KeyPairStreaming contains the x509 configuration for streaming
