@@ -32,26 +32,11 @@ import (
 
 // Pull downloads the provided content into containerd's content store
 // and returns a platform specific image object
-func (c *Client) Pull(ctx context.Context, ref string, opts ...RemoteOpt) (_ Image, retErr error) {
+func (c *Client) Pull(ctx context.Context, ref string, platform platforms.MatchComparer, opts ...RemoteOpt) (_ Image, retErr error) {
 	pullCtx := defaultRemoteContext()
 	for _, o := range opts {
 		if err := o(c, pullCtx); err != nil {
 			return nil, err
-		}
-	}
-
-	if pullCtx.PlatformMatcher == nil {
-		if len(pullCtx.Platforms) > 1 {
-			return nil, errors.New("cannot pull multiplatform image locally, try Fetch")
-		} else if len(pullCtx.Platforms) == 0 {
-			pullCtx.PlatformMatcher = c.platform
-		} else {
-			p, err := platforms.Parse(pullCtx.Platforms[0])
-			if err != nil {
-				return nil, errors.Wrapf(err, "invalid platform %s", pullCtx.Platforms[0])
-			}
-
-			pullCtx.PlatformMatcher = platforms.Only(p)
 		}
 	}
 
@@ -90,12 +75,12 @@ func (c *Client) Pull(ctx context.Context, ref string, opts ...RemoteOpt) (_ Ima
 		}
 	}
 
-	img, err := c.fetch(ctx, pullCtx, ref, 1)
+	img, err := c.fetch(ctx, pullCtx, ref, 1, platform)
 	if err != nil {
 		return nil, err
 	}
 
-	i := NewImageWithPlatform(c, img, pullCtx.PlatformMatcher)
+	i := NewImageWithPlatform(c, img, platform)
 
 	if pullCtx.Unpack {
 		if unpacks == 0 {
@@ -110,7 +95,7 @@ func (c *Client) Pull(ctx context.Context, ref string, opts ...RemoteOpt) (_ Ima
 	return i, nil
 }
 
-func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, limit int) (images.Image, error) {
+func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, limit int, platform platforms.MatchComparer) (images.Image, error) {
 	store := c.ContentStore()
 	name, desc, err := rCtx.Resolver.Resolve(ctx, ref)
 	if err != nil {
@@ -148,14 +133,14 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 		if rCtx.AllMetadata {
 			// Filter manifests by platforms but allow to handle manifest
 			// and configuration for not-target platforms
-			childrenHandler = remotes.FilterManifestByPlatformHandler(childrenHandler, rCtx.PlatformMatcher)
+			childrenHandler = remotes.FilterManifestByPlatformHandler(childrenHandler, platform)
 		} else {
 			// Filter children by platforms if specified.
-			childrenHandler = images.FilterPlatforms(childrenHandler, rCtx.PlatformMatcher)
+			childrenHandler = images.FilterPlatforms(childrenHandler, platform)
 		}
 		// Sort and limit manifests if a finite number is needed
 		if limit > 0 {
-			childrenHandler = images.LimitManifests(childrenHandler, rCtx.PlatformMatcher, limit)
+			childrenHandler = images.LimitManifests(childrenHandler, platform, limit)
 		}
 
 		// set isConvertible to true if there is application/octet-stream media type

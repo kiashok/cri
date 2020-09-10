@@ -22,6 +22,7 @@ import (
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/platforms"
 	"github.com/gogo/protobuf/proto"
 	ptypes "github.com/gogo/protobuf/types"
 	"github.com/opencontainers/image-spec/identity"
@@ -42,7 +43,7 @@ var (
 type RestoreOpts func(context.Context, string, *Client, Image, *imagespec.Index) NewContainerOpts
 
 // WithRestoreImage restores the image for the container
-func WithRestoreImage(ctx context.Context, id string, client *Client, checkpoint Image, index *imagespec.Index) NewContainerOpts {
+func WithRestoreImage(ctx context.Context, id string, client *Client, checkpoint Image, index *imagespec.Index, platform platforms.MatchComparer) NewContainerOpts {
 	return func(ctx context.Context, client *Client, c *containers.Container) error {
 		name, ok := index.Annotations[checkpointImageNameLabel]
 		if !ok || name == "" {
@@ -52,12 +53,12 @@ func WithRestoreImage(ctx context.Context, id string, client *Client, checkpoint
 		if !ok || name == "" {
 			return ErrSnapshotterNameNotFoundInIndex
 		}
-		i, err := client.GetImage(ctx, name)
+		i, err := client.GetImage(ctx, name, platform)
 		if err != nil {
 			return err
 		}
 
-		diffIDs, err := i.(*image).i.RootFS(ctx, client.ContentStore(), client.platform)
+		diffIDs, err := i.(*image).i.RootFS(ctx, client.ContentStore(), platform)
 		if err != nil {
 			return err
 		}

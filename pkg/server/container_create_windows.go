@@ -50,6 +50,11 @@ import (
 	"github.com/containerd/cri/pkg/util"
 )
 
+// KTODO
+func platformFromImage(i *runtime.ImageSpec) (platforms.MatchComparer, error) {
+	return platforms.All, nil
+}
+
 // CreateContainer creates a new container in the given PodSandbox.
 func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateContainerRequest) (_ *runtime.CreateContainerResponse, retErr error) {
 	config := r.GetConfig()
@@ -94,13 +99,17 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 		Config:    config,
 	}
 
+	platform, err := platformFromImage(config.GetImage())
+	if err != nil {
+		return nil, err
+	}
 	// Prepare container image snapshot. For container, the image should have
 	// been pulled before creating the container, so do not ensure the image.
 	image, err := c.localResolve(config.GetImage().GetImage())
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to resolve image %q", config.GetImage().GetImage())
 	}
-	containerdImage, err := c.toContainerdImage(ctx, image)
+	containerdImage, err := c.toContainerdImage(ctx, image, platform)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get image from containerd %q", image.ID)
 	}

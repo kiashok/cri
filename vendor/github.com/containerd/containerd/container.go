@@ -31,6 +31,7 @@ import (
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/containerd/containerd/sys"
 	"github.com/containerd/typeurl"
@@ -67,7 +68,7 @@ type Container interface {
 	// the output from the task's fifos
 	Task(context.Context, cio.Attach) (Task, error)
 	// Image returns the image that the container is based on
-	Image(context.Context) (Image, error)
+	Image(context.Context, platforms.MatchComparer) (Image, error)
 	// Labels returns the labels set on the container
 	Labels(context.Context) (map[string]string, error)
 	// SetLabels sets the provided labels for the container and returns the final label set
@@ -77,7 +78,7 @@ type Container interface {
 	// Update a container
 	Update(context.Context, ...UpdateContainerOpts) error
 	// Checkpoint creates a checkpoint image of the current container
-	Checkpoint(context.Context, string, ...CheckpointOpts) (Image, error)
+	Checkpoint(context.Context, string, platforms.MatchComparer, ...CheckpointOpts) (Image, error)
 }
 
 func containerFromRecord(client *Client, c containers.Container) *container {
@@ -191,7 +192,7 @@ func (c *container) Task(ctx context.Context, attach cio.Attach) (Task, error) {
 }
 
 // Image returns the image that the container is based on
-func (c *container) Image(ctx context.Context) (Image, error) {
+func (c *container) Image(ctx context.Context, platform platforms.MatchComparer) (Image, error) {
 	r, err := c.get(ctx)
 	if err != nil {
 		return nil, err
@@ -203,7 +204,7 @@ func (c *container) Image(ctx context.Context) (Image, error) {
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to get image %s for container", r.Image)
 	}
-	return NewImage(c.client, i), nil
+	return NewImage(c.client, i, platform), nil
 }
 
 func (c *container) NewTask(ctx context.Context, ioCreate cio.Creator, opts ...NewTaskOpts) (_ Task, err error) {
@@ -308,7 +309,7 @@ func (c *container) Update(ctx context.Context, opts ...UpdateContainerOpts) err
 	return nil
 }
 
-func (c *container) Checkpoint(ctx context.Context, ref string, opts ...CheckpointOpts) (Image, error) {
+func (c *container) Checkpoint(ctx context.Context, ref string, platform platforms.MatchComparer, opts ...CheckpointOpts) (Image, error) {
 	index := &ocispec.Index{
 		Versioned: ver.Versioned{
 			SchemaVersion: 2,
@@ -328,7 +329,7 @@ func (c *container) Checkpoint(ctx context.Context, ref string, opts ...Checkpoi
 		return nil, err
 	}
 
-	img, err := c.Image(ctx)
+	img, err := c.Image(ctx, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +370,7 @@ func (c *container) Checkpoint(ctx context.Context, ref string, opts ...Checkpoi
 		return nil, err
 	}
 
-	return NewImage(c.client, checkpoint), nil
+	return NewImage(c.client, checkpoint, platform), nil
 }
 
 func (c *container) loadTask(ctx context.Context, ioAttach cio.Attach) (Task, error) {

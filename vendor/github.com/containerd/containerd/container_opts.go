@@ -22,6 +22,7 @@ import (
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/oci"
+	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/typeurl"
 	"github.com/gogo/protobuf/types"
@@ -187,9 +188,9 @@ func WithSnapshotCleanup(ctx context.Context, client *Client, c containers.Conta
 
 // WithNewSnapshotView allocates a new snapshot to be used by the container as the
 // root filesystem in read-only mode
-func WithNewSnapshotView(id string, i Image, opts ...snapshots.Opt) NewContainerOpts {
+func WithNewSnapshotView(id string, i Image, platform platforms.MatchComparer, opts ...snapshots.Opt) NewContainerOpts {
 	return func(ctx context.Context, client *Client, c *containers.Container) error {
-		diffIDs, err := i.(*image).i.RootFS(ctx, client.ContentStore(), client.platform)
+		diffIDs, err := i.(*image).i.RootFS(ctx, client.ContentStore(), platform)
 		if err != nil {
 			return err
 		}

@@ -32,6 +32,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/containerd/platforms"
 	"github.com/docker/distribution/reference"
 	"github.com/opencontainers/go-digest"
 	"github.com/opencontainers/image-spec/specs-go"
@@ -109,7 +110,7 @@ func WithUnpack(snapshotter string) ImportOption {
 // Also, the current implementation assumes the implicit file name convention,
 // which is not explicitly documented in the spec. (e.g. foobar/layer.tar)
 // It returns a group of image references successfully loaded.
-func Import(ctx context.Context, client *containerd.Client, reader io.Reader, opts ...ImportOption) (_ []string, retErr error) {
+func Import(ctx context.Context, client *containerd.Client, reader io.Reader, platform platforms.MatchComparer, opts ...ImportOption) (_ []string, retErr error) {
 	c := &importConfig{}
 	for _, o := range opts {
 		o(c)
@@ -230,7 +231,7 @@ func Import(ctx context.Context, client *containerd.Client, reader io.Reader, op
 				Target: *desc,
 			}
 			if c.unpack {
-				img := containerd.NewImage(client, imgrec)
+				img := containerd.NewImage(client, imgrec, platform)
 				if err := img.Unpack(ctx, c.snapshotter); err != nil {
 					return refs, errors.Wrapf(err, "unpack image %q", ref)
 				}

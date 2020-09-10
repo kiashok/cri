@@ -98,7 +98,12 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 	// image has already been converted.
 	isSchema1 := desc.MediaType == containerdimages.MediaTypeDockerSchema1Manifest
 
-	image, err := c.client.Pull(ctx, ref,
+	platform, err := platformFromImage(r.GetImage())
+	if err != nil {
+		return nil, err
+	}
+
+	image, err := c.client.Pull(ctx, ref, platform,
 		containerd.WithSchema1Conversion,
 		containerd.WithResolver(resolver),
 		containerd.WithPullSnapshotter(c.getDefaultSnapshotterForSandbox(r.GetSandboxConfig())),
@@ -125,7 +130,7 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 		// Update image store to reflect the newest state in containerd.
 		// No need to use `updateImage`, because the image reference must
 		// have been managed by the cri plugin.
-		if err := c.imageStore.Update(ctx, r); err != nil {
+		if err := c.imageStore.Update(ctx, r, platform); err != nil {
 			return nil, errors.Wrapf(err, "failed to update image store %q", r)
 		}
 	}

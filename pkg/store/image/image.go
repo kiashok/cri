@@ -24,6 +24,7 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
+	"github.com/containerd/containerd/platforms"
 	"github.com/docker/distribution/digestset"
 	imagedigest "github.com/opencontainers/go-digest"
 	imageidentity "github.com/opencontainers/image-spec/identity"
@@ -73,10 +74,10 @@ func NewStore(client *containerd.Client) *Store {
 }
 
 // Update updates cache for a reference.
-func (s *Store) Update(ctx context.Context, ref string) error {
+func (s *Store) Update(ctx context.Context, ref string, platform platforms.MatchComparer) error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	i, err := s.client.GetImage(ctx, ref)
+	i, err := s.client.GetImage(ctx, ref, platform)
 	if err != nil && !errdefs.IsNotFound(err) {
 		return errors.Wrap(err, "get image from containerd")
 	}

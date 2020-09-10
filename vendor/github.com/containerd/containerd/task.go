@@ -35,6 +35,7 @@ import (
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/mount"
+	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/rootfs"
 	"github.com/containerd/containerd/runtime/linux/runctypes"
@@ -164,7 +165,7 @@ type Task interface {
 	// Additional software like CRIU maybe required to checkpoint and restore tasks
 	// NOTE: Checkpoint supports to dump task information to a directory, in this way,
 	// an empty OCI Index will be returned.
-	Checkpoint(context.Context, ...CheckpointTaskOpts) (Image, error)
+	Checkpoint(context.Context, platforms.MatchComparer, ...CheckpointTaskOpts) (Image, error)
 	// Update modifies executing tasks with updated settings
 	Update(context.Context, ...UpdateTaskOpts) error
 	// LoadProcess loads a previously created exec'd process
@@ -408,7 +409,7 @@ func (t *task) Resize(ctx context.Context, w, h uint32) error {
 
 // NOTE: Checkpoint supports to dump task information to a directory, in this way, an empty
 // OCI Index will be returned.
-func (t *task) Checkpoint(ctx context.Context, opts ...CheckpointTaskOpts) (Image, error) {
+func (t *task) Checkpoint(ctx context.Context, platform platforms.MatchComparer, opts ...CheckpointTaskOpts) (Image, error) {
 	ctx, done, err := t.client.WithLease(ctx)
 	if err != nil {
 		return nil, err
@@ -459,7 +460,7 @@ func (t *task) Checkpoint(ctx context.Context, opts ...CheckpointTaskOpts) (Imag
 	// if checkpoint image path passed, jump checkpoint image,
 	// return an empty image
 	if isCheckpointPathExist(cr.Runtime.Name, i.Options) {
-		return NewImage(t.client, images.Image{}), nil
+		return NewImage(t.client, images.Image{}, platform), nil
 	}
 
 	if cr.Image != "" {
@@ -487,7 +488,7 @@ func (t *task) Checkpoint(ctx context.Context, opts ...CheckpointTaskOpts) (Imag
 	if im, err = t.client.ImageService().Create(ctx, im); err != nil {
 		return nil, err
 	}
-	return NewImage(t.client, im), nil
+	return NewImage(t.client, im, platform), nil
 }
 
 // UpdateTaskInfo allows updated specific settings to be changed on a task

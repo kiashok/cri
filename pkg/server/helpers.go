@@ -30,6 +30,7 @@ import (
 	runhcsoptions "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/containers"
+	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/runtime/linux/runctypes"
 	runcoptions "github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/containerd/typeurl"
@@ -291,12 +292,12 @@ func (c *criService) localResolve(refOrID string) (imagestore.Image, error) {
 }
 
 // toContainerdImage converts an image object in image store to containerd image handler.
-func (c *criService) toContainerdImage(ctx context.Context, image imagestore.Image) (containerd.Image, error) {
+func (c *criService) toContainerdImage(ctx context.Context, image imagestore.Image, platform platforms.MatchComparer) (containerd.Image, error) {
 	// image should always have at least one reference.
 	if len(image.References) == 0 {
 		return nil, errors.Errorf("invalid image with no reference %q", image.ID)
 	}
-	return c.client.GetImage(ctx, image.References[0])
+	return c.client.GetImage(ctx, image.References[0], platform)
 }
 
 // getUserFromImage gets uid or user name of the image user.

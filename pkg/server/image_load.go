@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/containerd/platforms"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 
@@ -38,7 +39,8 @@ func (c *criService) LoadImage(ctx context.Context, r *api.LoadImageRequest) (*a
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to open file")
 	}
-	repoTags, err := importer.Import(ctx, c.client, f, importer.WithUnpack(c.config.ContainerdConfig.Snapshotter))
+	// KTODO
+	repoTags, err := importer.Import(ctx, c.client, f, platforms.All, importer.WithUnpack(c.config.ContainerdConfig.Snapshotter))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to import image")
 	}

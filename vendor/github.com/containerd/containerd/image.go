@@ -106,11 +106,11 @@ func WithManifestUsage() UsageOpt {
 var _ = (Image)(&image{})
 
 // NewImage returns a client image object from the metadata image
-func NewImage(client *Client, i images.Image) Image {
+func NewImage(client *Client, i images.Image, platform platforms.MatchComparer) Image {
 	return &image{
 		client:   client,
 		i:        i,
-		platform: client.platform,
+		platform: platform,
 	}
 }
 

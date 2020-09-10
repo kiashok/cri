@@ -29,11 +29,12 @@ import (
 	"github.com/containerd/containerd/archive/compression"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/platforms"
 	"github.com/pkg/errors"
 )
 
 // Install a binary image into the opt service
-func (c *Client) Install(ctx context.Context, image Image, opts ...InstallOpts) error {
+func (c *Client) Install(ctx context.Context, image Image, platform platforms.MatchComparer, opts ...InstallOpts) error {
 	var config InstallConfig
 	for _, o := range opts {
 		o(&config)
@@ -43,8 +44,7 @@ func (c *Client) Install(ctx context.Context, image Image, opts ...InstallOpts) 
 		return err
 	}
 	var (
-		cs       = image.ContentStore()
-		platform = c.platform
+		cs = image.ContentStore()
 	)
 	manifest, err := images.Manifest(ctx, cs, image.Target(), platform)
 	if err != nil {

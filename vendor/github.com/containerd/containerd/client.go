@@ -99,12 +99,6 @@ func New(address string, opts ...ClientOpt) (*Client, error) {
 		c.runtime = defaults.DefaultRuntime
 	}
 
-	if copts.defaultPlatform != nil {
-		c.platform = copts.defaultPlatform
-	} else {
-		c.platform = platforms.Default()
-	}
-
 	if copts.services != nil {
 		c.services = *copts.services
 	}
@@ -199,7 +193,6 @@ type Client struct {
 	conn      *grpc.ClientConn
 	runtime   string
 	defaultns string
-	platform  platforms.MatchComparer
 	connector func() (*grpc.ClientConn, error)
 }
 
@@ -295,11 +288,6 @@ type RemoteContext struct {
 	// If no resolver is provided, defaults to Docker registry resolver.
 	Resolver remotes.Resolver
 
-	// PlatformMatcher is used to match the platforms for an image
-	// operation and define the preference when a single match is required
-	// from multiple platforms.
-	PlatformMatcher platforms.MatchComparer
-
 	// Unpack is done after an image is pulled to extract into a snapshotter.
 	// It is done simultaneously for schema 2 images when they are pulled.
 	// If an image is not unpacked on pull, it can be unpacked any time
@@ -331,12 +319,6 @@ type RemoteContext struct {
 	// to schema 1 will return an error since schema 1 is not supported.
 	ConvertSchema1 bool
 
-	// Platforms defines which platforms to handle when doing the image operation.
-	// Platforms is ignored when a PlatformMatcher is set, otherwise the
-	// platforms will be used to create a PlatformMatcher with no ordering
-	// preference.
-	Platforms []string
-
 	// MaxConcurrentDownloads is the max concurrent content downloads for each pull.
 	MaxConcurrentDownloads int
 
@@ -354,7 +336,7 @@ func defaultRemoteContext() *RemoteContext {
 
 // Fetch downloads the provided content into containerd's content store
 // and returns a non-platform specific image reference
-func (c *Client) Fetch(ctx context.Context, ref string, opts ...RemoteOpt) (images.Image, error) {
+func (c *Client) Fetch(ctx context.Context, ref string, platform platforms.MatchComparer, opts ...RemoteOpt) (images.Image, error) {
 	fetchCtx := defaultRemoteContext()
 	for _, o := range opts {
 		if err := o(c, fetchCtx); err != nil {
@@ -366,53 +348,21 @@ func (c *Client) Fetch(ctx context.Context, ref string, opts ...RemoteOpt) (imag
 		return images.Image{}, errors.Wrap(errdefs.ErrNotImplemented, "unpack on fetch not supported, try pull")
 	}
 
-	if fetchCtx.PlatformMatcher == nil {
-		if len(fetchCtx.Platforms) == 0 {
-			fetchCtx.PlatformMatcher = platforms.All
-		} else {
-			var ps []ocispec.Platform
-			for _, s := range fetchCtx.Platforms {
-				p, err := platforms.Parse(s)
-				if err != nil {
-					return images.Image{}, errors.Wrapf(err, "invalid platform %s", s)
-				}
-				ps = append(ps, p)
-			}
-
-			fetchCtx.PlatformMatcher = platforms.Any(ps...)
-		}
-	}
-
 	ctx, done, err := c.WithLease(ctx)
 	if err != nil {
 		return images.Image{}, err
 	}
 	defer done(ctx)
 
-	return c.fetch(ctx, fetchCtx, ref, 0)
+	return c.fetch(ctx, fetchCtx, ref, 0, platform)
 }
 
 // Push uploads the provided content to a remote resource
-func (c *Client) Push(ctx context.Context, ref string, desc ocispec.Descriptor, opts ...RemoteOpt) error {
+func (c *Client) Push(ctx context.Context, ref string, desc ocispec.Descriptor, platform platforms.MatchComparer, opts ...RemoteOpt) error {
 	pushCtx := defaultRemoteContext()
 	for _, o := range opts {
 		if err := o(c, pushCtx); err != nil {
 			return err
-		}
-	}
-	if pushCtx.PlatformMatcher == nil {
-		if len(pushCtx.Platforms) > 0 {
-			var ps []ocispec.Platform
-			for _, platform := range pushCtx.Platforms {
-				p, err := platforms.Parse(platform)
-				if err != nil {
-					return errors.Wrapf(err, "invalid platform %s", platform)
-				}
-				ps = append(ps, p)
-			}
-			pushCtx.PlatformMatcher = platforms.Any(ps...)
-		} else {
-			pushCtx.PlatformMatcher = platforms.All
 		}
 	}
 
@@ -440,27 +390,27 @@ func (c *Client) Push(ctx context.Context, ref string, desc ocispec.Descriptor, 
 		wrapper = pushCtx.HandlerWrapper
 	}
 
-	return remotes.PushContent(ctx, pusher, desc, c.ContentStore(), pushCtx.PlatformMatcher, wrapper)
+	return remotes.PushContent(ctx, pusher, desc, c.ContentStore(), platform, wrapper)
 }
 
 // GetImage returns an existing image
-func (c *Client) GetImage(ctx context.Context, ref string) (Image, error) {
+func (c *Client) GetImage(ctx context.Context, ref string, platform platforms.MatchComparer) (Image, error) {
 	i, err := c.ImageService().Get(ctx, ref)
 	if err != nil {
 		return nil, err
 	}
-	return NewImage(c, i), nil
+	return NewImage(c, i, platform), nil
 }
 
 // ListImages returns all existing images
-func (c *Client) ListImages(ctx context.Context, filters ...string) ([]Image, error) {
+func (c *Client) ListImages(ctx context.Context, platform platforms.MatchComparer, filters ...string) ([]Image, error) {
 	imgs, err := c.ImageService().List(ctx, filters...)
 	if err != nil {
 		return nil, err
 	}
 	images := make([]Image, len(imgs))
 	for i, img := range imgs {
-		images[i] = NewImage(c, img)
+		images[i] = NewImage(c, img, platform)
 	}
 	return images, nil
 }
