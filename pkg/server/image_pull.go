@@ -110,7 +110,7 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 	pullOpts := []containerd.RemoteOpt{
 		containerd.WithSchema1Conversion,
 		containerd.WithResolver(resolver),
-		containerd.WithPullSnapshotter(c.config.ContainerdConfig.Snapshotter),
+		containerd.WithPullSnapshotter(c.getDefaultSnapshotterForSandbox(r.GetSandboxConfig())),
 		containerd.WithPullUnpack,
 		containerd.WithPullLabel(imageLabelKey, imageLabelValue),
 		containerd.WithImageHandler(imageHandler),
@@ -357,7 +357,7 @@ const (
 	targetLayerDigestLabel = "containerd.io/snapshot/cri.layer-digest"
 	// targetImageLayersLabel is a label which contains layer digests contained in
 	// the target image and will be passed to snapshotters for preparing layers in
-	// parallel.
+	// parallel. Skipping some layers is allowed and only affects performance.
 	targetImageLayersLabel = "containerd.io/snapshot/cri.image-layers"
 )
 
@@ -375,15 +375,6 @@ func appendInfoHandlerWrapper(ref string) func(f containerdimages.Handler) conta
 			}
 			switch desc.MediaType {
 			case imagespec.MediaTypeImageManifest, containerdimages.MediaTypeDockerSchema2Manifest:
-				var layers string
-				for _, c := range children {
-					if containerdimages.IsLayerType(c.MediaType) {
-						layers += fmt.Sprintf("%s,", c.Digest.String())
-					}
-				}
-				if len(layers) >= 1 {
-					layers = layers[:len(layers)-1]
-				}
 				for i := range children {
 					c := &children[i]
 					if containerdimages.IsLayerType(c.MediaType) {
@@ -400,4 +391,26 @@ func appendInfoHandlerWrapper(ref string) func(f containerdimages.Handler) conta
 			return children, nil
 		})
 	}
+}
+
+// getLayers returns comma-separated digests based on the passed list of
+// descriptors. The returned list contains as many digests as possible as well
+// as meets the label validation.
+func getLayers(ctx context.Context, key string, descs []imagespec.Descriptor, validate func(k, v string) error) (layers string) {
+	var item string
+	for _, l := range descs {
+		if containerdimages.IsLayerType(l.MediaType) {
+			item = l.Digest.String()
+			if layers != "" {
+				item = "," + item
+			}
+			// This avoids the label hits the size limitation.
+			if err := validate(key, layers+item); err != nil {
+				log.G(ctx).WithError(err).WithField("label", key).Debugf("%q is omitted in the layers list", l.Digest.String())
+				break
+			}
+			layers += item
+		}
+	}
+	return
 }
