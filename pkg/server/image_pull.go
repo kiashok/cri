@@ -26,6 +26,7 @@ import (
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/errdefs"
 	containerdimages "github.com/containerd/containerd/images"
+	"github.com/containerd/containerd/labels"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/reference"
 	"github.com/containerd/containerd/remotes"
@@ -348,9 +349,12 @@ const (
 	// targetRefLabel is a label which contains image reference and will be passed
 	// to snapshotters.
 	targetRefLabel = "containerd.io/snapshot/cri.image-ref"
-	// targetDigestLabel is a label which contains layer digest and will be passed
+	// targetManifestDigestLabel is a label which contains manifest digest and will be passed
 	// to snapshotters.
-	targetDigestLabel = "containerd.io/snapshot/cri.layer-digest"
+	targetManifestDigestLabel = "containerd.io/snapshot/cri.manifest-digest"
+	// targetLayerDigestLabel is a label which contains layer digest and will be passed
+	// to snapshotters.
+	targetLayerDigestLabel = "containerd.io/snapshot/cri.layer-digest"
 	// targetImageLayersLabel is a label which contains layer digests contained in
 	// the target image and will be passed to snapshotters for preparing layers in
 	// parallel.
@@ -358,8 +362,8 @@ const (
 )
 
 // appendInfoHandlerWrapper makes a handler which appends some basic information
-// of images to each layer descriptor as annotations during unpack. These
-// annotations will be passed to snapshotters as labels. These labels will be
+// of images like digests for manifest and their child layers as annotations during unpack.
+// These annotations will be passed to snapshotters as labels. These labels will be
 // used mainly by stargz-based snapshotters for querying image contents from the
 // registry.
 func appendInfoHandlerWrapper(ref string) func(f containerdimages.Handler) containerdimages.Handler {
@@ -387,8 +391,9 @@ func appendInfoHandlerWrapper(ref string) func(f containerdimages.Handler) conta
 							c.Annotations = make(map[string]string)
 						}
 						c.Annotations[targetRefLabel] = ref
-						c.Annotations[targetDigestLabel] = c.Digest.String()
-						c.Annotations[targetImageLayersLabel] = layers
+						c.Annotations[targetLayerDigestLabel] = c.Digest.String()
+						c.Annotations[targetImageLayersLabel] = getLayers(ctx, targetImageLayersLabel, children[i:], labels.Validate)
+						c.Annotations[targetManifestDigestLabel] = desc.Digest.String()
 					}
 				}
 			}
