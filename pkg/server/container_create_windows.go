@@ -252,6 +252,21 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 	return &runtime.CreateContainerResponse{ContainerId: id}, nil
 }
 
+// removeMount removes the mount with given destination inside the spec.
+func removeMount(s *runtimespec.Spec, dest string) {
+	var (
+		mounts  []runtimespec.Mount
+		current = s.Mounts
+	)
+	for _, m := range current {
+		if m.Destination == dest {
+			continue
+		}
+		mounts = append(mounts, m)
+	}
+	s.Mounts = mounts
+}
+
 func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxPid uint32, netnsPath string, config *runtime.ContainerConfig,
 	sandboxConfig *runtime.PodSandboxConfig, sandboxPlatform string, image *imagespec.Image) (*runtimespec.Spec, error) {
 	// Creates a spec Generator with the default spec.
@@ -264,6 +279,8 @@ func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxP
 	if plat.OS == "linux" {
 		// Remove default rlimits (See issue #515)
 		spec.Process.Rlimits = nil
+		// Remove default /run mount. This matches upstream behavior.
+		removeMount(spec, "/run")
 	}
 	g := newSpecGenerator(spec)
 
