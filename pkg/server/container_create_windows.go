@@ -20,6 +20,7 @@ package server
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -176,13 +177,19 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 	meta.ImageRef = image.ID
 	meta.StopSignal = image.ImageSpec.Config.StopSignal
 
+	cioOpts := cio.WithNewFIFOs(volatileContainerRootDir, config.GetTty(), config.GetStdin())
+
 	// Get container log path.
 	if config.GetLogPath() != "" {
-		meta.LogPath = filepath.Join(sandbox.Config.GetLogDirectory(), config.GetLogPath())
+		u, err := url.Parse(config.GetLogPath())
+		if err == nil && u.Scheme == "binary" {
+			cioOpts = cio.WithBinaryFIFOs(config.GetLogPath())
+		} else {
+			meta.LogPath = filepath.Join(sandbox.Config.GetLogDirectory(), config.GetLogPath())
+		}
 	}
 
-	containerIO, err := cio.NewContainerIO(id,
-		cio.WithNewFIFOs(volatileContainerRootDir, config.GetTty(), config.GetStdin()))
+	containerIO, err := cio.NewContainerIO(id, cioOpts)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create container io")
 	}
