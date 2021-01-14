@@ -325,111 +325,9 @@ func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxP
 	g.AddAnnotation(annotations.SandboxID, sandboxID)
 
 	// Add OCI Mounts
-	for _, m := range config.GetMounts() {
-		src := m.HostPath
-		var destination string
-		if plat.OS == "linux" {
-			destination = strings.Replace(m.ContainerPath, "\\", "/", -1)
-			//kubelet will prepend c: if it's running on Windows and there's no drive letter, so we need to strip it out
-			if match, _ := regexp.MatchString("^[A-Za-z]:", destination); match {
-				destination = destination[2:]
-			}
-		} else {
-			destination = strings.Replace(m.ContainerPath, "/", "\\", -1)
-		}
-
-		var mountType string
-		var options []string
-		if plat.OS == "linux" {
-			options = append(options, "rbind")
-			switch m.GetPropagation() {
-			case runtime.MountPropagation_PROPAGATION_PRIVATE:
-				options = append(options, "rprivate")
-			case runtime.MountPropagation_PROPAGATION_BIDIRECTIONAL:
-				options = append(options, "rshared")
-				g.SetLinuxRootPropagation("rshared")
-			case runtime.MountPropagation_PROPAGATION_HOST_TO_CONTAINER:
-				options = append(options, "rslave")
-				if g.Config.Linux.RootfsPropagation != "rshared" {
-					g.SetLinuxRootPropagation("rslave")
-				}
-			default:
-				log.G(ctx).Warnf("Unknown propagation mode %v for hostPath %q, defaulting to rprivate", m.GetPropagation(), src)
-				options = append(options, "rprivate")
-			}
-		}
-
-		if m.GetReadonly() {
-			options = append(options, "ro")
-		} else {
-			options = append(options, "rw")
-		}
-
-		if strings.HasPrefix(strings.ToUpper(src), `\\.\PHYSICALDRIVE`) {
-			mountType = "physical-disk"
-		} else if strings.HasPrefix(src, `\\.\pipe`) {
-			if plat.OS == "linux" {
-				return nil, errors.Errorf(`pipe mount.HostPath '%s' not supported for LCOW`, src)
-			}
-		} else if strings.HasPrefix(src, "sandbox://") {
-			// mount source prefix sandbox:// is only supported with lcow
-			if sandboxPlatform != "linux/amd64" {
-				return nil, errors.Errorf(`sandbox://' mounts are only supported for LCOW`, src)
-			}
-			mountType = "bind"
-		} else if strings.Contains(src, "kubernetes.io~empty-dir") && sandboxPlatform == "linux/amd64" {
-			// kubernetes.io~empty-dir in the mount path indicates it comes from the kubernetes
-			// empty-dir plugin, which creates an empty scratch directory to be shared between
-			// containers in a pod. For LCOW, we special case this support and actually create
-			// our own directory inside the UVM. For WCOW, we want to skip this conditional branch
-			// entirely, and just treat the mount like a normal directory mount.
-			subpaths := strings.SplitAfter(src, "kubernetes.io~empty-dir")
-			if len(subpaths) < 2 {
-				return nil, errors.Errorf("emptyDir %s must specify a source path", src)
-			}
-			// convert kubernetes.io~empty-dir into a sandbox mount
-			mountType = "bind"
-			formattedSource := subpaths[1]
-			src = fmt.Sprintf("sandbox://%s", formattedSource)
-		} else if strings.HasPrefix(src, "vhd://") {
-			formattedSource, err := filepath.EvalSymlinks(strings.TrimPrefix(src, "vhd://"))
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to EvalSymlinks vhd:// mount.HostPath %q", src)
-			}
-			s, err := c.os.Stat(formattedSource)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to Stat vhd:// mount.HostPath %q", formattedSource)
-			}
-			if s.IsDir() {
-				return nil, errors.New("vhd:// prefix is only supported on file paths")
-			}
-			ext := strings.ToLower(filepath.Ext(formattedSource))
-			if ext != ".vhd" && ext != ".vhdx" {
-				return nil, errors.New("vhd:// prefix is only supported on file paths ending in .vhd or .vhdx")
-			}
-			src = formattedSource
-			mountType = "virtual-disk"
-		} else {
-			formattedSource, err := filepath.EvalSymlinks(strings.Replace(src, "/", "\\", -1))
-			if err != nil {
-				return nil, err
-			}
-			_, err = c.os.Stat(formattedSource)
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to Stat mount.HostPath '%s'", formattedSource)
-			}
-			src = formattedSource
-			if plat.OS == "linux" {
-				mountType = "bind"
-			}
-		}
-
-		g.AddMount(runtimespec.Mount{
-			Source:      src,
-			Destination: destination,
-			Type:        mountType,
-			Options:     options,
-		})
+	err = c.addOCIMounts(ctx, &g, plat, config.GetMounts())
+	if err != nil {
+		return nil, err
 	}
 
 	if plat.OS == "linux" {
@@ -521,6 +419,137 @@ func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxP
 	}
 
 	return g.Config, nil
+}
+
+func (c *criService) addOCIMounts(ctx context.Context, g *generator, platform imagespec.Platform, mounts []*runtime.Mount) error {
+	// This will be set to 'true' if user-provided '/sys/fs/cgroup' mount exists
+	cgOverriden := false
+	// Add OCI Mounts
+	for _, m := range mounts {
+		src := m.HostPath
+		var destination string
+		if platform.OS == "linux" {
+			destination = strings.Replace(m.ContainerPath, "\\", "/", -1)
+			// kubelet will prepend c: if it's running on Windows and there's no drive letter, so we need to strip it out
+			if match, _ := regexp.MatchString("^[A-Za-z]:", destination); match {
+				destination = destination[2:]
+			}
+		} else {
+			destination = strings.Replace(m.ContainerPath, "/", "\\", -1)
+		}
+
+		var mountType string
+		var options []string
+		if platform.OS == "linux" {
+			options = append(options, "rbind")
+			switch m.GetPropagation() {
+			case runtime.MountPropagation_PROPAGATION_PRIVATE:
+				options = append(options, "rprivate")
+			case runtime.MountPropagation_PROPAGATION_BIDIRECTIONAL:
+				options = append(options, "rshared")
+				g.SetLinuxRootPropagation("rshared")
+			case runtime.MountPropagation_PROPAGATION_HOST_TO_CONTAINER:
+				options = append(options, "rslave")
+				if g.Config.Linux.RootfsPropagation != "rshared" {
+					g.SetLinuxRootPropagation("rslave")
+				}
+			default:
+				log.G(ctx).Warnf("Unknown propagation mode %v for hostPath %q, defaulting to rprivate", m.GetPropagation(), src)
+				options = append(options, "rprivate")
+			}
+		}
+
+		if m.GetReadonly() {
+			options = append(options, "ro")
+		} else {
+			options = append(options, "rw")
+		}
+
+		if strings.HasPrefix(strings.ToUpper(src), `\\.\PHYSICALDRIVE`) {
+			mountType = "physical-disk"
+		} else if strings.HasPrefix(src, `\\.\pipe`) {
+			if platform.OS == "linux" {
+				return errors.Errorf(`pipe mount.HostPath '%s' not supported for LCOW`, src)
+			}
+		} else if strings.HasPrefix(src, "sandbox://") {
+			// mount source prefix sandbox:// is only supported with lcow
+			if platform.OS != "linux" || platform.Architecture != "amd64" {
+				return errors.Errorf(`sandbox://%s' mounts are only supported for LCOW`, src)
+			}
+			mountType = "bind"
+		} else if strings.Contains(src, "kubernetes.io~empty-dir") && platform.OS == "linux" && platform.Architecture == "amd64" {
+			// kubernetes.io~empty-dir in the mount path indicates it comes from the kubernetes
+			// empty-dir plugin, which creates an empty scratch directory to be shared between
+			// containers in a pod. For LCOW, we special case this support and actually create
+			// our own directory inside the UVM. For WCOW, we want to skip this conditional branch
+			// entirely, and just treat the mount like a normal directory mount.
+			subpaths := strings.SplitAfter(src, "kubernetes.io~empty-dir")
+			if len(subpaths) < 2 {
+				return errors.Errorf("emptyDir %s must specify a source path", src)
+			}
+			// convert kubernetes.io~empty-dir into a sandbox mount
+			mountType = "bind"
+			formattedSource := subpaths[1]
+			src = fmt.Sprintf("sandbox://%s", formattedSource)
+		} else if strings.HasPrefix(src, "vhd://") {
+			formattedSource, err := filepath.EvalSymlinks(strings.TrimPrefix(src, "vhd://"))
+			if err != nil {
+				return errors.Wrapf(err, "failed to EvalSymlinks vhd:// mount.HostPath %q", src)
+			}
+			s, err := c.os.Stat(formattedSource)
+			if err != nil {
+				return errors.Wrapf(err, "failed to Stat vhd:// mount.HostPath %q", formattedSource)
+			}
+			if s.IsDir() {
+				return errors.New("vhd:// prefix is only supported on file paths")
+			}
+			ext := strings.ToLower(filepath.Ext(formattedSource))
+			if ext != ".vhd" && ext != ".vhdx" {
+				return errors.New("vhd:// prefix is only supported on file paths ending in .vhd or .vhdx")
+			}
+			src = formattedSource
+			mountType = "virtual-disk"
+		} else {
+			formattedSource, err := filepath.EvalSymlinks(strings.Replace(src, "/", "\\", -1))
+			if err != nil {
+				return err
+			}
+			_, err = c.os.Stat(formattedSource)
+			if err != nil {
+				return errors.Wrapf(err, "failed to Stat mount.HostPath '%s'", formattedSource)
+			}
+			src = formattedSource
+			if platform.OS == "linux" {
+				mountType = "bind"
+			}
+		}
+
+		g.AddMount(runtimespec.Mount{
+			Source:      src,
+			Destination: destination,
+			Type:        mountType,
+			Options:     options,
+		})
+
+		if destination == "/sys/fs/cgroup" {
+			cgOverriden = true
+		}
+	}
+
+	if platform.OS == "linux" {
+		// Make sure not to override user-provided 'sys/fs/cgroup' mount
+		if !cgOverriden {
+			// Mount cgroup into the container as readonly, which inherits docker's behavior.
+			g.AddMount(runtimespec.Mount{
+				Source:      "cgroup",
+				Destination: "/sys/fs/cgroup",
+				Type:        "cgroup",
+				Options:     []string{"nosuid", "noexec", "nodev", "relatime", "ro"},
+			})
+		}
+	}
+
+	return nil
 }
 
 // getCRIDeviceInfo is a helper function that returns a spec specified device's
