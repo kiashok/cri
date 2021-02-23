@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -52,6 +53,10 @@ import (
 // CreateContainer creates a new container in the given PodSandbox.
 func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateContainerRequest) (_ *runtime.CreateContainerResponse, retErr error) {
 	config := r.GetConfig()
+	if config.Annotations == nil {
+		config.Annotations = make(map[string]string)
+	}
+
 	log.G(ctx).Debugf("Container config %+v", config)
 	sandboxConfig := r.GetSandboxConfig()
 	sandbox, err := c.sandboxStore.Get(r.GetPodSandboxId())
@@ -166,8 +171,28 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 
 	log.G(ctx).Debugf("Container %q spec: %#+v", id, spew.NewFormatter(spec))
 
-	snapshotterOpt := snapshots.WithLabels(config.Annotations)
+	// If the config field is specified, set the snapshotter label to reuse the pods
+	// scratch space. This only affects LCOW at the moment.
+	val, ok := config.Annotations["containerd.io/snapshot/io.microsoft.container.storage.reuse-scratch"]
+	if rhcso.ShareScratch || (ok && val == "true") {
+		config.Annotations["containerd.io/snapshot/io.microsoft.container.storage.reuse-scratch"] = "true"
+		_, ok := config.Annotations["containerd.io/snapshot/io.microsoft.owner.key"]
+		if !ok {
+			config.Annotations["containerd.io/snapshot/io.microsoft.owner.key"] = sandboxID
+		}
+	}
 
+	if rhcso.DefaultContainerScratchSizeInGb != 0 {
+		size := strconv.FormatInt(int64(rhcso.DefaultContainerScratchSizeInGb), 10)
+		annotationSize, ok := config.Annotations["containerd.io/snapshot/io.microsoft.container.storage.rootfs.size-gb"]
+		if !ok {
+			config.Annotations["containerd.io/snapshot/io.microsoft.container.storage.rootfs.size-gb"] = size
+		} else {
+			log.G(ctx).Debugf("Changing default container scratch size for %s from %s to %s", id, size, annotationSize)
+		}
+	}
+
+	snapshotterOpt := snapshots.WithLabels(config.Annotations)
 	// Set snapshotter before any other options.
 	opts := []containerd.NewContainerOpts{
 		containerd.WithSnapshotter(c.getDefaultSnapshotterForPlatform(sandboxPlatform)),
