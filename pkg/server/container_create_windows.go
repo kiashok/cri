@@ -546,6 +546,8 @@ func (c *criService) addOCIMounts(ctx context.Context, g *generator, platform im
 			}
 			src = formattedSource
 			mountType = "virtual-disk"
+		} else if strings.HasPrefix(src, `evd://`) {
+			mountType = "extensible-virtual-disk"
 		} else {
 			formattedSource, err := filepath.EvalSymlinks(strings.Replace(src, "/", "\\", -1))
 			if err != nil {
