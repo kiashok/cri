@@ -20,13 +20,14 @@ package server
 
 import (
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirupsen/logrus"
 
 	runhcsoptions "github.com/Microsoft/hcsshim/cmd/containerd-shim-runhcs-v1/options"
 	"github.com/containerd/containerd"
@@ -171,9 +172,9 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 	}
 
 	log.G(ctx).WithFields(logrus.Fields{
-		"id": id,
+		"id":             id,
 		"runtimeHandler": sandbox.RuntimeHandler,
-		"spec": spew.NewFormatter(spec),
+		"spec":           spew.NewFormatter(spec),
 	}).Debug("Container creation")
 
 	// If the config field is specified, set the snapshotter label to reuse the pods
@@ -512,6 +513,12 @@ func (c *criService) addOCIMounts(ctx context.Context, g *generator, platform im
 			// mount source prefix sandbox:// is only supported with lcow
 			if platform.OS != "linux" || platform.Architecture != "amd64" {
 				return errors.Errorf(`sandbox://%s' mounts are only supported for LCOW`, src)
+			}
+			mountType = "bind"
+		} else if strings.HasPrefix(src, "hugepages://") {
+			// mount source prefix hugepages:// is only supported with lcow
+			if platform.OS != "linux" || platform.Architecture != "amd64" {
+				return errors.Errorf(`hugepages://%s mounts are only supported for LCOW`, src)
 			}
 			mountType = "bind"
 		} else if strings.Contains(src, "kubernetes.io~empty-dir") && platform.OS == "linux" && platform.Architecture == "amd64" {
