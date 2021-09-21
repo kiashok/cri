@@ -510,11 +510,11 @@ func (c *criService) addOCIMounts(ctx context.Context, g *generator, platform im
 				return errors.Errorf(`pipe mount.HostPath '%s' not supported for LCOW`, src)
 			}
 		} else if strings.HasPrefix(src, "sandbox://") {
-			// mount source prefix sandbox:// is only supported with lcow
-			if platform.OS != "linux" || platform.Architecture != "amd64" {
-				return errors.Errorf(`sandbox://%s' mounts are only supported for LCOW`, src)
+			// Sandbox mounts are supported for both Windows and Linux guests, but the type (bind) isn't needed to be set for Windows. This
+			// is just to tell runc what kind of mount to make for the mount provided in the runtime spec.
+			if platform.OS == "linux" {
+				mountType = "bind"
 			}
-			mountType = "bind"
 		} else if strings.HasPrefix(src, "hugepages://") {
 			// mount source prefix hugepages:// is only supported with lcow
 			if platform.OS != "linux" || platform.Architecture != "amd64" {
