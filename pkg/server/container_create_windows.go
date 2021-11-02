@@ -196,7 +196,7 @@ func (c *criService) CreateContainer(ctx context.Context, r *runtime.CreateConta
 		}
 	}
 
-	snapshotterOpt := snapshots.WithLabels(config.Annotations)
+	snapshotterOpt := snapshots.WithLabels(snapshots.FilterInheritedLabels(config.Annotations))
 	// Set snapshotter before any other options.
 	opts := []containerd.NewContainerOpts{
 		containerd.WithSnapshotter(c.getDefaultSnapshotterForPlatform(sandboxPlatform)),
