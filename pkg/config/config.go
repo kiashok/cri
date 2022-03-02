@@ -68,6 +68,10 @@ type ContainerdConfig struct {
 	// remove layers from the content store after successfully unpacking these
 	// layers to the snapshotter.
 	DiscardUnpackedLayers bool `toml:"discard_unpacked_layers" json:"discardUnpackedLayers"`
+
+	// EnableLayerIntegrity is a boolean flag to specify whether to enable integrity
+	// protection of read-only container layers during image pull.
+	EnableLayerIntegrity bool `toml:"enable_layer_integrity" json:"enableLayerIntegrity"`
 }
 
 // CniConfig contains toml config related to cni
