@@ -23,8 +23,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/containerd/containerd/diff"
 	"github.com/containerd/containerd"
+	"github.com/containerd/containerd/diff"
 	"github.com/containerd/containerd/errdefs"
 	containerdimages "github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/labels"
@@ -131,7 +131,7 @@ func (c *criService) PullImage(ctx context.Context, r *runtime.PullImageRequest)
 
 	if c.config.ContainerdConfig.EnableLayerIntegrity {
 		// Enable integrity protection of read-only layers
-		pullOpts = append(pullOpts, containerd.WithContainerLayerIntegrity())
+		pullOpts = append(pullOpts, containerd.WithLCOWLayerIntegrity())
 	}
 
 	image, err := c.client.Pull(ctx, ref, pullOpts...)
