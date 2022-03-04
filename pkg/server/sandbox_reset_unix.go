@@ -1,4 +1,5 @@
 //go:build !windows
+// +build !windows
 
 /*
 Copyright 2017 The Kubernetes Authors.
@@ -19,10 +20,9 @@ limitations under the License.
 package server
 
 import (
-	api "github.com/containerd/cri/pkg/api/v1"
+	sandboxstore "github.com/containerd/cri/pkg/store/sandbox"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
-	sandboxstore "github.com/containerd/cri/pkg/store/sandbox"
 )
 
 func (c *criService) resetSandbox(ctx context.Context, sandbox sandboxstore.Sandbox) (retErr error) {
