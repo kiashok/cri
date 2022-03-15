@@ -169,6 +169,8 @@ type PluginConfig struct {
 	DisableHTTP2Client bool `toml:"disable_http2_client" json:"disableHTTP2Client"`
 	// Determines whether any running containers should be terminated when CRI shuts down or starts up.
 	TerminateContainersOnRestart bool `toml:"terminate_containers_on_restart" json:"terminateContainersOnRestart"`
+	// Enables scrubbing sensitive information from the logs
+	ScrubLogs bool `toml:"scrub_logs" json:"scrubLogs"`
 }
 
 // X509KeyPairStreaming contains the x509 configuration for streaming
