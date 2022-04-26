@@ -33,7 +33,7 @@ func (c *criService) Scrub(i interface{}) fmt.Formatter {
 		return spew.NewFormatter(i)
 	}
 
-	if r := reflect.ValueOf(i); r.Type().Kind() == reflect.Pointer {
+	if r := reflect.ValueOf(i); r.Type().Kind() == reflect.Ptr {
 		// if a pointer is passed, dereference it and scrub the copy
 		i = r.Elem().Interface()
 	}
