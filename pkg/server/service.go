@@ -28,6 +28,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/containerd/pkg/cri/streaming"
 	"github.com/containerd/containerd/pkg/kmutex"
 	"github.com/containerd/containerd/plugin"
 	cni "github.com/containerd/go-cni"
@@ -35,7 +36,6 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	runtime "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
-	"k8s.io/kubernetes/pkg/kubelet/server/streaming"
 
 	api "github.com/containerd/cri/pkg/api/v1"
 	"github.com/containerd/cri/pkg/atomic"
@@ -61,7 +61,7 @@ type CRIService interface {
 	Run() error
 	// io.Closer is used by containerd to gracefully stop cri service.
 	io.Closer
-	plugin.Service
+	Register(*grpc.Server) error
 	grpcServices
 }
 
