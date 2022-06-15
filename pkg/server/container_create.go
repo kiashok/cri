@@ -42,8 +42,8 @@ func init() {
 
 // setOCIProcessArgs sets process args. It returns error if the final arg list
 // is empty.
-func setOCIProcessArgs(g *generator, config *runtime.ContainerConfig, Image *imagestore.Image) error {
-	image := Image.ImageSpec
+func setOCIProcessArgs(g *generator, config *runtime.ContainerConfig, criImage *imagestore.Image) error {
+	image := criImage.ImageSpec
 	command, args := config.GetCommand(), config.GetArgs()
 	// The following logic is migrated from https://github.com/moby/moby/blob/master/daemon/commit.go
 	// TODO(random-liu): Clearly define the commands overwrite behavior.
@@ -63,7 +63,7 @@ func setOCIProcessArgs(g *generator, config *runtime.ContainerConfig, Image *ima
 	if ignoreArgsEscapedAnno, ok := config.Annotations["microsoft.io/ignore-args-escaped"]; ok {
 		ignoreArgsEscaped = ignoreArgsEscapedAnno == "true"
 	}
-	setProcessArgs(g, image.OS == "windows", Image.ArgsEscaped && !ignoreArgsEscaped, append(command, args...))
+	setProcessArgs(g, image.OS == "windows", criImage.ArgsEscaped && !ignoreArgsEscaped, append(command, args...))
 	return nil
 }
 

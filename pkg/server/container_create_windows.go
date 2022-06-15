@@ -300,8 +300,8 @@ func removeMount(s *runtimespec.Spec, dest string) {
 }
 
 func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxPid uint32, netnsPath string, config *runtime.ContainerConfig,
-	sandboxConfig *runtime.PodSandboxConfig, sandboxPlatform string, Image *imagestore.Image) (*runtimespec.Spec, error) {
-	image := Image.ImageSpec
+	sandboxConfig *runtime.PodSandboxConfig, sandboxPlatform string, imagestoreImage *imagestore.Image) (*runtimespec.Spec, error) {
+	image := imagestoreImage.ImageSpec
 	// Creates a spec Generator with the default spec.
 	ctx := ctrdutil.NamespacedContext()
 	spec, err := oci.GenerateSpecWithPlatform(ctx, nil, sandboxPlatform, &containers.Container{ID: id})
@@ -317,7 +317,7 @@ func (c *criService) generateContainerSpec(id string, sandboxID string, sandboxP
 	}
 	g := newSpecGenerator(spec)
 
-	if err := setOCIProcessArgs(&g, config, Image); err != nil {
+	if err := setOCIProcessArgs(&g, config, imagestoreImage); err != nil {
 		return nil, err
 	}
 

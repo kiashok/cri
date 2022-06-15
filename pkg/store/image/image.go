@@ -148,6 +148,10 @@ func getImage(ctx context.Context, i containerd.Image) (*Image, error) {
 		return nil, errors.Wrapf(err, "unmarshal image config %s", rb)
 	}
 
+	// imageExtended is a superset of the oci Image struct. It helps
+	// to deserialize `ArgsEscaped` which is a non-OCI field that is
+	// used by docker to determine how the image command should be
+	// interpreted
 	type imageExtended struct {
 		Config struct {
 			ArgsEscaped bool `json:"ArgsEscaped,omitempty"`
