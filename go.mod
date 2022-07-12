@@ -19,7 +19,6 @@ require (
 	github.com/emicklei/go-restful v2.15.0+incompatible
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.2
-	github.com/j-keck/arping v1.0.2 // indirect
 	github.com/moby/sys/signal v0.6.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.0.3-0.20211202183452-c5a74bcca799
@@ -29,6 +28,7 @@ require (
 	github.com/opencontainers/selinux v1.10.0
 	github.com/pelletier/go-toml v1.9.3
 	github.com/pkg/errors v0.9.1
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
