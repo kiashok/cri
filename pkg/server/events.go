@@ -26,6 +26,7 @@ import (
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/events"
 	"github.com/containerd/typeurl"
+	gogotypes "github.com/gogo/protobuf/types"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
@@ -134,7 +135,7 @@ func (em *eventMonitor) startExitMonitor(ctx context.Context, id string, pid uin
 	return stopCh
 }
 
-func convertEvent(e typeurl.Any) (string, interface{}, error) {
+func convertEvent(e *gogotypes.Any) (string, interface{}, error) {
 	id := ""
 	evt, err := typeurl.UnmarshalAny(e)
 	if err != nil {
